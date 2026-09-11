@@ -391,3 +391,18 @@ export const ORDER_STATUS_COLORS: Record<string, string> = {
   served: 'bg-gray-100 text-gray-700 border-gray-200',
   cancelled: 'bg-red-100 text-red-700 border-red-200',
 };
+
+export interface AppNotification {
+  id: string;
+  restaurant_id: string;
+  title: string;
+  message: string;
+  type: 'order' | 'table' | 'system';
+  order_id?: string;
+  order_number?: string;
+  table_number?: string;
+  amount?: number;
+  created_at: string;
+  read: boolean;
+}
+

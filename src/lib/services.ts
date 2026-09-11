@@ -813,6 +813,18 @@ export async function createOrder(order: Partial<Order>): Promise<Order | null> 
     });
   }
 
+  // Broadcast new order event so any open Admin / Kitchen tab receives real-time notification
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('dinescan:new_order', { detail: created }));
+      if ('BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('dinescan_orders_channel');
+        bc.postMessage({ type: 'NEW_ORDER', order: created });
+        bc.close();
+      }
+    } catch {}
+  }
+
   return created;
 }
 

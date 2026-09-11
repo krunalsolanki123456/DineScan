@@ -13,6 +13,8 @@ import {
   Building2, Check, CreditCard, AlertTriangle, AlertOctagon,
   ArrowLeft,
 } from 'lucide-react';
+import NotificationDropdown from './NotificationDropdown';
+import OrderNotificationToast from './OrderNotificationToast';
 
 interface NavItem {
   to: string;
@@ -380,14 +382,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 </button>
               )}
 
-              {/* Notification Bell */}
-              <button
-                className="relative flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-slate-50/60 text-slate-600 transition hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600"
-                title="Notifications"
-              >
-                <Bell size={17} className="sm:w-[19px] sm:h-[19px]" />
-                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-orange-500 ring-2 ring-white" />
-              </button>
+              {/* Notification Bell Dropdown */}
+              <NotificationDropdown />
 
               {/* User Dropdown Profile */}
               <div className="relative shrink-0" ref={profileRef}>
@@ -467,6 +463,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </header>
 
           <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
+          <OrderNotificationToast />
         </div>
       </div>
     </div>

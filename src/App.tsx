@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { CartProvider } from '@/lib/cart-context';
+import { NotificationProvider } from '@/lib/notification-context';
 import { ThemeProvider } from '@/lib/theme-context';
 import { FloatingThemeSwitcher } from '@/components/ui/ThemeColorPicker';
 import type { Permission } from '@/types';
@@ -278,10 +279,12 @@ export default function App() {
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
-          <CartProvider>
-            <AppRoutes />
-            <FloatingThemeSwitcher />
-          </CartProvider>
+          <NotificationProvider>
+            <CartProvider>
+              <AppRoutes />
+              <FloatingThemeSwitcher />
+            </CartProvider>
+          </NotificationProvider>
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>
