@@ -11,7 +11,7 @@ import {
   Palette, Settings, ChefHat, LogOut, ChevronLeft, ChevronRight,
   Bell, Search, Menu, X, User, Shield, ChevronDown,
   Building2, Check, CreditCard, AlertTriangle, AlertOctagon,
-  ArrowLeft,
+  ArrowLeft, Clock,
 } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
 import OrderNotificationToast from './OrderNotificationToast';
@@ -182,6 +182,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     </>
   );
 
+  // Advance Contract / Subscription Expiration Notice (e.g. within 7 days)
+  const daysUntilExpiry = subscription?.expires_at
+    ? Math.ceil((new Date(subscription.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : null;
+  const isExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry > 0 && daysUntilExpiry <= 7 && subscription?.status === 'ACTIVE';
+
   return (
     <div className="flex h-screen bg-slate-50 flex-col">
       {/* 1. Super Admin Inspection Banner */}
@@ -230,6 +236,22 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </div>
           <NavLink to="/admin/billing" className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-rose-700">
             Renew Now
+          </NavLink>
+        </div>
+      )}
+
+      {/* 4. Advance Contract Expiry Notice (Within 7 days) */}
+      {isExpiringSoon && (
+        <div className="bg-orange-50 border-b border-orange-200 text-orange-950 px-4 py-2 flex items-center justify-between text-xs font-medium shrink-0 z-40">
+          <div className="flex items-center gap-2">
+            <Clock size={16} className="text-orange-600 shrink-0" />
+            <span>
+              Contract Renewal Notice: Your subscription expires in {daysUntilExpiry} day{daysUntilExpiry === 1 ? '' : 's'} (
+              {new Date(subscription!.expires_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}).
+            </span>
+          </div>
+          <NavLink to="/admin/billing" className="rounded-md bg-orange-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-orange-700">
+            Renew Early
           </NavLink>
         </div>
       )}
