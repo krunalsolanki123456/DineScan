@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { getSubscriptionByRestaurant, getPaymentsByRestaurant } from '@/lib/services';
+import { getSubscriptionByRestaurant, getPaymentsByRestaurant, updateSubscription } from '@/lib/services';
 import type { RestaurantSubscription, Payment } from '@/types';
 import { PageHeader } from '@/components/admin/PageBits';
 import { Toast } from '@/components/ui';
@@ -8,16 +8,17 @@ import { formatCurrency } from '@/lib/utils';
 import {
   CreditCard, CheckCircle2, AlertTriangle, AlertOctagon,
   Calendar, FileText, Download, Clock, ShieldCheck, Sparkles,
-  ArrowUpRight, X, Check,
+  ArrowUpRight, X, Check, RefreshCw, FlaskConical,
 } from 'lucide-react';
 
 export default function RestaurantBillingPage() {
-  const { restaurant, subscription } = useAuth();
+  const { restaurant, subscription, refreshSubscription } = useAuth();
   const [sub, setSub] = useState<RestaurantSubscription | null>(subscription);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Payment | null>(null);
+  const [simulating, setSimulating] = useState(false);
 
   useEffect(() => {
     if (!restaurant?.id) return;
@@ -32,6 +33,36 @@ export default function RestaurantBillingPage() {
   const planPrice = sub?.amount || (planName === 'Business' ? 9990 : planName === 'Starter' ? 299 : 599);
   const subStatus = sub?.status || (restaurant?.status === 'past_due' ? 'PAST_DUE' : restaurant?.status === 'expired' ? 'EXPIRED' : 'ACTIVE');
 
+  const daysUntilExpiry = sub?.expires_at
+    ? Math.ceil((new Date(sub.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : null;
+  const isExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry > 0 && daysUntilExpiry <= 7 && subStatus === 'ACTIVE';
+
+  const handleSimulateStatus = async (
+    targetStatus: 'ACTIVE' | 'PAST_DUE' | 'EXPIRED',
+    daysOffset: number,
+    label: string
+  ) => {
+    if (!restaurant?.id) return;
+    setSimulating(true);
+    try {
+      const targetDate = new Date(Date.now() + daysOffset * 24 * 60 * 60 * 1000).toISOString();
+      await updateSubscription(restaurant.id, {
+        status: targetStatus,
+        expires_at: targetDate,
+        next_billing_date: targetDate,
+      });
+      await refreshSubscription();
+      const updated = await getSubscriptionByRestaurant(restaurant.id);
+      setSub(updated);
+      setToast(`Simulation: ${label} applied! Look at the top banner & status below.`);
+    } catch {
+      setToast('Failed to simulate subscription status');
+    } finally {
+      setSimulating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -40,6 +71,28 @@ export default function RestaurantBillingPage() {
       />
 
       {/* Subscription Status Alert Banners */}
+      {isExpiringSoon && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 sm:p-5 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-200/80 text-amber-800">
+              <Clock size={20} />
+            </div>
+            <div>
+              <p className="font-bold text-sm sm:text-base">Contract Renewal Notice</p>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Your DineScan subscription expires in <strong>{daysUntilExpiry} day{daysUntilExpiry === 1 ? '' : 's'}</strong> ({sub?.expires_at ? new Date(sub.expires_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}). Renew early to avoid service interruption.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setToast('Payment gateway opened. Simulating online contract renewal...')}
+            className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700 transition shrink-0"
+          >
+            Renew Early
+          </button>
+        </div>
+      )}
+
       {subStatus === 'PAST_DUE' && (
         <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 sm:p-5 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center gap-3">
@@ -83,6 +136,95 @@ export default function RestaurantBillingPage() {
           </button>
         </div>
       )}
+
+      {/* Contract & Expiry Live Testing Simulator */}
+      <div className="rounded-2xl border border-dashed border-indigo-300 bg-indigo-50/50 p-5 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-100 pb-3.5">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-xs">
+              <FlaskConical size={16} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                Contract Expiry Testing Simulator
+                <span className="rounded-md bg-indigo-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-indigo-700">
+                  Testing Controls
+                </span>
+              </h3>
+              <p className="text-xs text-slate-500">
+                Click any button to test and see how the alerts, banners, and contract expiry warnings appear across the dashboard.
+              </p>
+            </div>
+          </div>
+          {simulating && (
+            <span className="flex items-center gap-1 text-xs font-semibold text-indigo-600 animate-pulse">
+              <RefreshCw size={12} className="animate-spin" /> Updating...
+            </span>
+          )}
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <button
+            type="button"
+            disabled={simulating}
+            onClick={() => handleSimulateStatus('ACTIVE', 300, 'Healthy Active Contract (300 Days)')}
+            className="flex flex-col items-start rounded-xl border border-emerald-200 bg-white p-3 text-left hover:border-emerald-400 hover:bg-emerald-50/50 transition shadow-xs group"
+          >
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              🟢 Active (Healthy)
+            </span>
+            <span className="text-[11px] text-slate-500 mt-1">
+              Expires in 300 days (Normal state, no warning banners)
+            </span>
+          </button>
+
+          <button
+            type="button"
+            disabled={simulating}
+            onClick={() => handleSimulateStatus('ACTIVE', 3, 'Expiring in 3 Days')}
+            className="flex flex-col items-start rounded-xl border border-amber-200 bg-white p-3 text-left hover:border-amber-400 hover:bg-amber-50/50 transition shadow-xs group"
+          >
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-700">
+              <span className="h-2 w-2 rounded-full bg-amber-500" />
+              ⚠️ Expiring in 3 Days
+            </span>
+            <span className="text-[11px] text-slate-500 mt-1">
+              Shows top Orange Banner (Advance notice)
+            </span>
+          </button>
+
+          <button
+            type="button"
+            disabled={simulating}
+            onClick={() => handleSimulateStatus('EXPIRED', -1, 'Contract Expired')}
+            className="flex flex-col items-start rounded-xl border border-rose-200 bg-white p-3 text-left hover:border-rose-400 hover:bg-rose-50/50 transition shadow-xs group"
+          >
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-700">
+              <span className="h-2 w-2 rounded-full bg-rose-500" />
+              ⛔ Expired Contract
+            </span>
+            <span className="text-[11px] text-slate-500 mt-1">
+              Shows Sticky Red Banner (Access locked)
+            </span>
+          </button>
+
+          <button
+            type="button"
+            disabled={simulating}
+            onClick={() => handleSimulateStatus('PAST_DUE', 5, 'Payment Past Due')}
+            className="flex flex-col items-start rounded-xl border border-amber-200 bg-white p-3 text-left hover:border-amber-400 hover:bg-amber-50/50 transition shadow-xs group"
+          >
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-700">
+              <span className="h-2 w-2 rounded-full bg-amber-500" />
+              🟡 Past Due Invoice
+            </span>
+            <span className="text-[11px] text-slate-500 mt-1">
+              Shows Amber Banner (Payment overdue notice)
+            </span>
+          </button>
+        </div>
+      </div>
 
       {/* Current Plan Overview Card */}
       <div className="grid gap-5 lg:grid-cols-3">

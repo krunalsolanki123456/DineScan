@@ -55,6 +55,7 @@ interface AuthContextType {
 
   // Subscription state of active restaurant
   subscription: RestaurantSubscription | null;
+  refreshSubscription: () => Promise<void>;
 
   // Roles & Permissions
   userRole: UserRole;
@@ -95,7 +96,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [customPermissions, setCustomPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load subscription for active restaurant
   const loadSubscriptionFor = useCallback(async (restId: string) => {
     try {
       const sub = await getSubscriptionByRestaurant(restId);
@@ -104,6 +104,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSubscription(null);
     }
   }, []);
+
+  const refreshSubscription = useCallback(async () => {
+    const currentRest = inspectedRestaurant || restaurant;
+    if (currentRest?.id) {
+      await loadSubscriptionFor(currentRest.id);
+    }
+  }, [inspectedRestaurant, restaurant, loadSubscriptionFor]);
 
   // Resolve active restaurant from list
   const resolveActive = useCallback(async (
@@ -621,6 +628,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       getActiveRestaurant,
       getCurrentMembership,
       subscription,
+      refreshSubscription,
       userRole,
       customPermissions,
       can: canDo,

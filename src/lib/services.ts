@@ -1546,7 +1546,57 @@ export async function getSubscriptionByRestaurant(restaurantId: string): Promise
   } catch {}
 
   const subs = getLocalData<RestaurantSubscription>(LOCAL_STORAGE_KEYS.SUBSCRIPTIONS, demoSubscriptions);
-  return subs.find(s => s.restaurant_id === restaurantId) ?? null;
+  let sub = subs.find(s => s.restaurant_id === restaurantId);
+  if (!sub) {
+    const now = new Date();
+    const expiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    sub = {
+      id: `sub-${restaurantId}`,
+      restaurant_id: restaurantId,
+      plan_id: 'plan-pro',
+      status: 'ACTIVE',
+      billing_cycle: 'monthly',
+      starts_at: now.toISOString(),
+      expires_at: expiry.toISOString(),
+      next_billing_date: expiry.toISOString(),
+      amount: 599,
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    };
+    subs.push(sub);
+    saveLocalData(LOCAL_STORAGE_KEYS.SUBSCRIPTIONS, subs);
+  }
+  return sub;
+}
+
+export async function updateSubscription(
+  restaurantId: string,
+  updates: Partial<RestaurantSubscription>
+): Promise<RestaurantSubscription | null> {
+  const subs = getLocalData<RestaurantSubscription>(LOCAL_STORAGE_KEYS.SUBSCRIPTIONS, demoSubscriptions);
+  let idx = subs.findIndex(s => s.restaurant_id === restaurantId);
+  if (idx === -1) {
+    const newSub: RestaurantSubscription = {
+      id: `sub-${restaurantId}`,
+      restaurant_id: restaurantId,
+      plan_id: 'plan-pro',
+      status: updates.status || 'ACTIVE',
+      billing_cycle: 'monthly',
+      starts_at: new Date().toISOString(),
+      expires_at: updates.expires_at || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      next_billing_date: updates.next_billing_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      amount: 599,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      ...updates,
+    };
+    subs.push(newSub);
+    saveLocalData(LOCAL_STORAGE_KEYS.SUBSCRIPTIONS, subs);
+    return newSub;
+  }
+  subs[idx] = { ...subs[idx], ...updates, updated_at: new Date().toISOString() };
+  saveLocalData(LOCAL_STORAGE_KEYS.SUBSCRIPTIONS, subs);
+  return subs[idx];
 }
 
 export async function updateSubscriptionStatus(
