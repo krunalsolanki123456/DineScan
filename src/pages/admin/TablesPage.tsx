@@ -105,33 +105,64 @@ export default function TablesPage() {
     }
   };
 
-  // Default Network Wi-Fi IP so mobile phones can connect (mobile phones CANNOT connect to localhost)
+  // Helper to determine if we are currently on a live domain (e.g., Vercel or custom domain)
+  const isLiveSite = typeof window !== 'undefined' &&
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1';
+
+  // Live Vercel production deployment URL
+  const PRODUCTION_VERCEL_URL = 'https://dinescan-one.vercel.app';
+
+  // Configured production/app URL from environment or default Vercel domain
+  const envAppUrl = ((import.meta as unknown as { env?: Record<string, string> }).env?.VITE_APP_URL || '').trim() || PRODUCTION_VERCEL_URL;
+
+  // Local Wi-Fi IP fallback for local network mobile testing
   const DEFAULT_WIFI_IP = '10.2.7.19:5173';
 
-  // QR Host resolution: defaults to Wi-Fi IP for phone camera scanning
+  // QR Host resolution: defaults to https://dinescan-one.vercel.app
   const [qrHost, setQrHost] = useState(() => {
+    if (typeof window === 'undefined') return PRODUCTION_VERCEL_URL;
+
+    // If running on Vercel or any live domain, ALWAYS default to current origin
+    if (isLiveSite) {
+      const saved = localStorage.getItem('dinescan_qr_host');
+      // If user had previously stored a stale local IP or localhost, purge it
+      if (saved && !saved.includes('10.2.7.19') && !saved.includes('localhost') && !saved.includes('127.0.0.1')) {
+        return saved.trim();
+      }
+      localStorage.setItem('dinescan_qr_host', window.location.origin);
+      return window.location.origin;
+    }
+
+    // If running on localhost: purge any old 10.2.7.19 IP and use Vercel URL
     const saved = localStorage.getItem('dinescan_qr_host');
-    if (saved && saved.trim() && !saved.includes('localhost') && !saved.includes('127.0.0.1')) {
+    if (saved && saved.trim() && !saved.includes('10.2.7.19')) {
       return saved.trim();
     }
-    // Remove any stale localhost value from localStorage
-    localStorage.setItem('dinescan_qr_host', DEFAULT_WIFI_IP);
-    return DEFAULT_WIFI_IP;
+
+    // Default to the Vercel production URL so all scanned QR codes open on Vercel
+    localStorage.setItem('dinescan_qr_host', envAppUrl);
+    return envAppUrl;
   });
   const [editingHost, setEditingHost] = useState(false);
   const [tempHost, setTempHost] = useState(qrHost);
 
   // Return full URL for table QR & Menu:
-  // Mobile QR Code ALWAYS uses Wi-Fi IP (never localhost), while desktop preview can use window.location.origin
   const qrUrl = (table: RestaurantTable, forceDesktop = false) => {
     if (forceDesktop && typeof window !== 'undefined') {
       return `${window.location.origin}/menu/${restaurantSlug}?table=${encodeURIComponent(table.table_number)}`;
     }
     let host = qrHost.trim();
-    if (!host || host.includes('localhost') || host.includes('127.0.0.1')) {
-      host = DEFAULT_WIFI_IP;
+    if (!host || host.includes('10.2.7.19')) {
+      host = envAppUrl || PRODUCTION_VERCEL_URL;
     }
-    const full = host.startsWith('http://') || host.startsWith('https://') ? host : `http://${host}`;
+    // Format protocol correctly (https for vercel/production domains, preserve http for local IPs)
+    let full = host;
+    if (!full.startsWith('http://') && !full.startsWith('https://')) {
+      full = full.includes('localhost') || full.match(/^\d+\.\d+\.\d+\.\d+/) ? `http://${full}` : `https://${full}`;
+    }
+    // Remove any trailing slash
+    full = full.replace(/\/+$/, '');
     return `${full}/menu/${restaurantSlug}?table=${encodeURIComponent(table.table_number)}`;
   };
 
@@ -191,6 +222,11 @@ export default function TablesPage() {
     w.document.close();
   };
 
+  // Base public URL for customer menu links (defaults to https://dinescan-one.vercel.app)
+  const publicBaseUrl = isLiveSite
+    ? window.location.origin
+    : (qrHost || envAppUrl || PRODUCTION_VERCEL_URL);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -199,7 +235,7 @@ export default function TablesPage() {
         actions={
           <div className="flex items-center gap-2">
             <a
-              href={`/menu/${restaurantSlug}`}
+              href={`${publicBaseUrl}/menu/${restaurantSlug}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
@@ -231,20 +267,20 @@ export default function TablesPage() {
               Customers scan table QR codes to access this menu. You can also open or copy the direct link below:
             </p>
             <p className="mt-0.5 font-mono text-xs font-bold text-orange-700 break-all">
-              {typeof window !== 'undefined' ? `${window.location.origin}/menu/${restaurantSlug}` : `/menu/${restaurantSlug}`}
+              {`${publicBaseUrl}/menu/${restaurantSlug}`}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => copyToClipboard(`${window.location.origin}/menu/${restaurantSlug}`, 'general-menu')}
+            onClick={() => copyToClipboard(`${publicBaseUrl}/menu/${restaurantSlug}`, 'general-menu')}
             className="flex items-center gap-1.5 rounded-xl border border-orange-300 bg-white px-3 py-2 text-xs font-bold text-orange-700 hover:bg-orange-50 transition cursor-pointer"
           >
             {copiedId === 'general-menu' ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
             <span>{copiedId === 'general-menu' ? 'Copied!' : 'Copy Menu Link'}</span>
           </button>
           <a
-            href={`/menu/${restaurantSlug}?table=01`}
+            href={`${publicBaseUrl}/menu/${restaurantSlug}?table=01`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 rounded-xl bg-orange-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-orange-700 transition"
@@ -265,7 +301,7 @@ export default function TablesPage() {
       {/* Table Cards Grid */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {tables.map((table) => {
-          const directUrl = qrUrl(table, true);
+          const directUrl = qrUrl(table);
           return (
             <div key={table.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
               <div className="flex items-start justify-between">
@@ -299,10 +335,10 @@ export default function TablesPage() {
                   href={directUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-1 block truncate text-xs font-semibold text-orange-600 hover:underline"
+                  className="mt-1 block truncate text-xs font-semibold text-orange-600 hover:underline font-mono"
                   title="Click to open menu for this table in new tab"
                 >
-                  /menu/{restaurantSlug}?table={table.table_number} ↗
+                  {directUrl} ↗
                 </a>
               </div>
 
@@ -470,18 +506,19 @@ export default function TablesPage() {
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-xs font-bold text-slate-800">QR Target Host (IP / Domain)</span>
+                  <span className="text-xs font-bold text-slate-800">QR Code Target URL / Host</span>
                   <p className="text-[11px] text-slate-500">
-                    Switch between localhost (for this PC) or your Wi-Fi IP (for phone camera scan):
+                    Choose whether QR codes point to your live Vercel domain or a local testing address:
                   </p>
                 </div>
                 <button
                   onClick={() => {
                     if (editingHost) {
-                      localStorage.setItem('dinescan_qr_host', tempHost.trim());
-                      setQrHost(tempHost.trim());
+                      const clean = tempHost.trim();
+                      localStorage.setItem('dinescan_qr_host', clean);
+                      setQrHost(clean);
                       setEditingHost(false);
-                      setToast('QR Code host updated!');
+                      setToast('QR Code URL updated!');
                     } else {
                       setTempHost(qrHost);
                       setEditingHost(true);
@@ -489,47 +526,69 @@ export default function TablesPage() {
                   }}
                   className="text-xs font-bold text-orange-600 hover:text-orange-700 cursor-pointer"
                 >
-                  {editingHost ? 'Save' : 'Custom'}
+                  {editingHost ? 'Save' : 'Custom URL'}
                 </button>
               </div>
 
-              {/* Quick Presets: Wi-Fi IP (for phone) vs Localhost */}
+              {/* Quick Presets: Vercel / Live Domain vs Local Network IP */}
               <div className="flex flex-wrap items-center gap-2">
+                {/* Dedicated Vercel Production URL */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.setItem('dinescan_qr_host', PRODUCTION_VERCEL_URL);
+                    setQrHost(PRODUCTION_VERCEL_URL);
+                    setTempHost(PRODUCTION_VERCEL_URL);
+                    setToast(`Switched QR to Vercel: ${PRODUCTION_VERCEL_URL}`);
+                  }}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
+                    qrHost === PRODUCTION_VERCEL_URL || qrHost.includes('dinescan-one.vercel.app')
+                      ? 'bg-orange-600 text-white shadow-xs'
+                      : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <Globe size={13} />
+                  <span>🚀 Vercel Live (dinescan-one.vercel.app)</span>
+                </button>
+
+                {/* Current Browser Origin (if distinct) */}
+                {typeof window !== 'undefined' && !window.location.host.includes('dinescan-one.vercel.app') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const origin = window.location.origin;
+                      localStorage.setItem('dinescan_qr_host', origin);
+                      setQrHost(origin);
+                      setTempHost(origin);
+                      setToast(`Switched to: ${origin}`);
+                    }}
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition cursor-pointer ${
+                      qrHost === window.location.origin
+                        ? 'bg-slate-900 text-white'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>🌐 Current Host ({window.location.host})</span>
+                  </button>
+                )}
+
+                {/* Local Wi-Fi IP for phone testing on local network */}
                 <button
                   type="button"
                   onClick={() => {
                     localStorage.setItem('dinescan_qr_host', DEFAULT_WIFI_IP);
                     setQrHost(DEFAULT_WIFI_IP);
                     setTempHost(DEFAULT_WIFI_IP);
-                    setToast(`Switched QR to Wi-Fi IP: ${DEFAULT_WIFI_IP}`);
-                  }}
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
-                    qrHost === DEFAULT_WIFI_IP
-                      ? 'bg-orange-600 text-white shadow-xs'
-                      : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <Wifi size={13} />
-                  <span>📱 Phone Scan (Wi-Fi IP: {DEFAULT_WIFI_IP})</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const host = typeof window !== 'undefined' && window.location.host ? window.location.host : 'localhost:5173';
-                    localStorage.setItem('dinescan_qr_host', host);
-                    setQrHost(host);
-                    setTempHost(host);
-                    setToast(`Switched to: ${host}`);
+                    setToast(`Switched QR to Local Wi-Fi IP: ${DEFAULT_WIFI_IP}`);
                   }}
                   className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition cursor-pointer ${
-                    qrHost === (typeof window !== 'undefined' ? window.location.host : '')
+                    qrHost === DEFAULT_WIFI_IP
                       ? 'bg-slate-800 text-white'
                       : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  <Laptop size={13} />
-                  <span>💻 Localhost ({typeof window !== 'undefined' ? window.location.host : 'localhost'})</span>
+                  <Wifi size={13} />
+                  <span>📱 Local Wi-Fi ({DEFAULT_WIFI_IP})</span>
                 </button>
               </div>
 
@@ -539,12 +598,13 @@ export default function TablesPage() {
                     className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-500"
                     value={tempHost}
                     onChange={e => setTempHost(e.target.value)}
-                    placeholder="e.g. 192.168.1.10:5173 or menu.mydomain.com"
+                    placeholder="Enter your Vercel URL e.g. https://your-project.vercel.app"
                   />
                   <button
                     onClick={() => {
-                      localStorage.setItem('dinescan_qr_host', tempHost.trim());
-                      setQrHost(tempHost.trim());
+                      const clean = tempHost.trim();
+                      localStorage.setItem('dinescan_qr_host', clean);
+                      setQrHost(clean);
                       setEditingHost(false);
                       setToast('Host saved!');
                     }}
