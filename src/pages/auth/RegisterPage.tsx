@@ -31,13 +31,17 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
-    const { error } = await signUp(form.email, form.password);
+    const { error } = await signUp(form.email, form.password, {
+      restaurantName: form.restaurantName,
+      ownerName: form.ownerName,
+      phone: form.phone,
+    });
     setLoading(false);
 
     if (error) {
       setError(error);
     } else {
-      navigate('/onboarding');
+      navigate('/admin/dashboard');
     }
   };
 

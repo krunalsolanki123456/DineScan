@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
-import { createRestaurant, createCategory, createMenuItem, createTable, saveSettings } from '@/lib/services';
+import { createRestaurant, updateRestaurant, createCategory, createMenuItem, createTable, saveSettings } from '@/lib/services';
 import { slugify } from '@/lib/utils';
 import { QrCode, Check, Store, UtensilsCrossed, Leaf, FolderTree, ArrowRight, ArrowLeft } from 'lucide-react';
 
@@ -16,20 +16,20 @@ const steps = [
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
-  const { user, refreshRestaurant } = useAuth();
+  const { user, restaurant, refreshRestaurant } = useAuth();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
 
   const [restaurantInfo, setRestaurantInfo] = useState({
-    name: '',
-    phone: '',
-    email: '',
-    address: '',
-    city: '',
-    state: '',
-    pincode: '',
-    logo_url: '',
-    cover_url: '',
+    name: restaurant?.name || '',
+    phone: restaurant?.phone || '',
+    email: restaurant?.email || user?.email || '',
+    address: restaurant?.address || '',
+    city: restaurant?.city || '',
+    state: restaurant?.state || '',
+    pincode: restaurant?.pincode || '',
+    logo_url: restaurant?.logo_url || '',
+    cover_url: restaurant?.cover_url || '',
   });
   const [restaurantType, setRestaurantType] = useState('restaurant');
   const [foodPreference, setFoodPreference] = useState('both');
@@ -41,29 +41,45 @@ export default function OnboardingPage() {
     food_type: 'veg',
   });
   const [tableCount, setTableCount] = useState('4');
-  const [createdRestaurantId, setCreatedRestaurantId] = useState<string | null>(null);
+  const [createdRestaurantId, setCreatedRestaurantId] = useState<string | null>(restaurant?.id || null);
   const [createdCategoryId, setCreatedCategoryId] = useState<string | null>(null);
 
   const handleNext = async () => {
     if (step === 0) {
       setLoading(true);
       try {
-        const restaurant = await createRestaurant({
-          name: restaurantInfo.name,
-          slug: slugify(restaurantInfo.name) || 'my-restaurant',
-          owner_id: user?.id,
-          phone: restaurantInfo.phone,
-          email: restaurantInfo.email,
-          address: restaurantInfo.address,
-          city: restaurantInfo.city,
-          state: restaurantInfo.state,
-          pincode: restaurantInfo.pincode,
-          logo_url: restaurantInfo.logo_url || null,
-          cover_url: restaurantInfo.cover_url || null,
-          type: restaurantType,
-          food_preference: foodPreference,
-        });
-        if (restaurant) setCreatedRestaurantId(restaurant.id);
+        if (createdRestaurantId) {
+          await updateRestaurant(createdRestaurantId, {
+            name: restaurantInfo.name,
+            phone: restaurantInfo.phone,
+            email: restaurantInfo.email,
+            address: restaurantInfo.address,
+            city: restaurantInfo.city,
+            state: restaurantInfo.state,
+            pincode: restaurantInfo.pincode,
+            logo_url: restaurantInfo.logo_url || null,
+            cover_url: restaurantInfo.cover_url || null,
+            type: restaurantType,
+            food_preference: foodPreference,
+          });
+        } else {
+          const newRest = await createRestaurant({
+            name: restaurantInfo.name,
+            slug: slugify(restaurantInfo.name) || 'my-restaurant',
+            owner_id: user?.id,
+            phone: restaurantInfo.phone,
+            email: restaurantInfo.email,
+            address: restaurantInfo.address,
+            city: restaurantInfo.city,
+            state: restaurantInfo.state,
+            pincode: restaurantInfo.pincode,
+            logo_url: restaurantInfo.logo_url || null,
+            cover_url: restaurantInfo.cover_url || null,
+            type: restaurantType,
+            food_preference: foodPreference,
+          });
+          if (newRest) setCreatedRestaurantId(newRest.id);
+        }
       } catch (err) {
         console.error(err);
       }
@@ -132,12 +148,21 @@ export default function OnboardingPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-2xl px-4 py-8">
-        {/* Logo */}
-        <div className="mb-8 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-orange-50">
-            <img src="/favicon.png" alt="DineScan" className="h-9 w-9 object-contain" />
+        {/* Logo & Quick Skip */}
+        <div className="mb-8 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-orange-50">
+              <img src="/favicon.png" alt="DineScan" className="h-9 w-9 object-contain" />
+            </div>
+            <span className="text-lg font-bold text-slate-900">DineScan</span>
           </div>
-          <span className="text-lg font-bold text-slate-900">DineScan</span>
+          <button
+            type="button"
+            onClick={() => navigate('/admin/dashboard')}
+            className="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+          >
+            Skip to Dashboard ↗
+          </button>
         </div>
 
         {/* Progress */}

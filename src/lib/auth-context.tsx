@@ -16,7 +16,10 @@ import {
   getAllRestaurants,
   getLocalData,
   LOCAL_STORAGE_KEYS,
+  createRestaurant,
+  createTable,
 } from './services';
+import { slugify } from '@/lib/utils';
 import {
   can as canCheck,
   hasPermission as hasPermCheck,
@@ -68,7 +71,11 @@ interface AuthContextType {
     role?: UserRole;
     isPlatformOwner?: boolean;
   }>;
-  signUp: (email: string, password: string) => Promise<{ error: string | null; data: unknown }>;
+  signUp: (
+    email: string,
+    password: string,
+    extra?: { restaurantName?: string; ownerName?: string; phone?: string }
+  ) => Promise<{ error: string | null; data: unknown }>;
   signOut: () => Promise<void>;
 }
 
@@ -475,9 +482,113 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null, restaurantsCount: 0 };
   };
 
-  const signUp = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    return { error: error?.message || null, data };
+  const signUp = async (
+    email: string,
+    password: string,
+    extra?: { restaurantName?: string; ownerName?: string; phone?: string }
+  ) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanRestaurantName = extra?.restaurantName?.trim() || 'My Restaurant';
+    const cleanOwnerName = extra?.ownerName?.trim() || cleanEmail.split('@')[0];
+    const cleanPhone = extra?.phone?.trim() || '';
+
+    let currentUserId: string = '';
+    let currentUserObj: User | null = null;
+    let signUpData: unknown = null;
+
+    // 1. Sign up with Supabase Auth
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: {
+          data: {
+            name: cleanOwnerName,
+            phone: cleanPhone,
+            restaurant_name: cleanRestaurantName,
+          },
+        },
+      });
+
+      if (error) {
+        return { error: error.message, data: null };
+      }
+
+      signUpData = data;
+      if (data?.user) {
+        currentUserId = data.user.id;
+        currentUserObj = data.user;
+        setSession(data.session ?? null);
+      }
+    } catch (err: unknown) {
+      console.warn('Supabase auth sign up warning:', err);
+    }
+
+    // Fallback user object if Supabase user object is offline or generated mock
+    if (!currentUserId) {
+      currentUserId = `user-${Date.now()}`;
+      currentUserObj = {
+        id: currentUserId,
+        app_metadata: {},
+        user_metadata: { name: cleanOwnerName, phone: cleanPhone },
+        aud: 'authenticated',
+        created_at: new Date().toISOString(),
+        email: cleanEmail,
+      };
+    }
+
+    // Update authenticated user state immediately
+    setUser(currentUserObj);
+    setUserRole('owner');
+
+    // 2. Automatically create the restaurant using the provided Restaurant Name
+    try {
+      const newRestaurant = await createRestaurant({
+        name: cleanRestaurantName,
+        slug: slugify(cleanRestaurantName) || `restaurant-${Date.now()}`,
+        owner_id: currentUserId,
+        owner_user_id: currentUserId,
+        phone: cleanPhone,
+        email: cleanEmail,
+        type: 'restaurant',
+        is_open: true,
+        status: 'active',
+        cuisines: 'Multi-Cuisine',
+      });
+
+      if (newRestaurant) {
+        // Create initial default tables so QR codes are ready right away
+        try {
+          await Promise.all([
+            createTable({ restaurant_id: newRestaurant.id, table_number: '01', seats: 2, status: 'available', area: 'Ground Floor' }),
+            createTable({ restaurant_id: newRestaurant.id, table_number: '02', seats: 4, status: 'available', area: 'Ground Floor' }),
+            createTable({ restaurant_id: newRestaurant.id, table_number: '03', seats: 4, status: 'available', area: 'Ground Floor' }),
+            createTable({ restaurant_id: newRestaurant.id, table_number: '04', seats: 6, status: 'available', area: 'First Floor' }),
+          ]);
+        } catch {}
+
+        localStorage.setItem(ACTIVE_RESTAURANT_KEY, newRestaurant.id);
+        setRestaurant(newRestaurant);
+        setRestaurants(prev => {
+          const filtered = prev.filter(r => r.id !== newRestaurant.id);
+          return [newRestaurant, ...filtered];
+        });
+
+        void logAuditAction({
+          user_id: currentUserId,
+          user_email: cleanEmail,
+          restaurant_id: newRestaurant.id,
+          restaurant_name: newRestaurant.name,
+          action: 'REGISTER',
+          module: 'AUTH',
+          metadata: { role: 'owner' },
+        });
+      }
+    } catch (createErr) {
+      console.error('Error auto-creating restaurant:', createErr);
+    }
+
+    return { error: null, data: signUpData };
   };
 
   const signOut = async () => {
